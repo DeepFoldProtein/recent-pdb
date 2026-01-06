@@ -37,62 +37,62 @@ logger = logging.getLogger(__name__)
 def load_eval_results(eval_dir: Path) -> list[dict]:
     """Load all evaluation result JSON files and extract multiple metrics.
 
-    Expected directory structure: {eval_dir}/{target}/{method}/results.json
-    Where method = {predictor}_{featurizer} (e.g., AlphaFold3_mmseqs2_uniref30)
-    and featurizer = {aligner}_{database}.
-    Each results.json contains multiple scores from OST compare_structures.
+    Expected directory structure: {eval_dir}/{featurizer}/{predictor}/{target_id}/{scorer}.json
     """
     results = []
 
-    # Metrics to extract from OST compare_structures output
-    METRIC_KEYS = [
-        ("lddt", "lddt"),
-        ("global_lddt", "global_lddt"),
-        ("qs_score", "qs_score"),
-        ("qs_global", "qs_global"),
-        ("ics", "ics"),
-        ("ips", "ips"),
-        ("dockq_ave", "dockq_ave"),
-        ("dockq_wave", "dockq_wave"),
-        ("tm_score", "tm_score"),
-    ]
+    # Dictionary to map file scorer names to internal metric keys
+    # If the JSON file contains the metric directly, we use it.
+    # Otherwise we might need to map specific file contents.
 
     for json_file in eval_dir.rglob("*.json"):
         try:
             with open(json_file) as f:
                 data = json.load(f)
 
-            # Extract target_id and method from path: {eval_dir}/{target}/{method}/results.json
+            # Extract info from path: {eval_dir}/{featurizer}/{predictor}/{target_id}/{scorer}.json
             parts = json_file.relative_to(eval_dir).parts
-            if len(parts) >= 3:
-                target_id = parts[0]
-                method = parts[
-                    1
-                ]  # predictor_featurizer (e.g., AlphaFold3_mmseqs2_uniref30)
-            elif len(parts) >= 2:
-                target_id = parts[0]
-                method = json_file.stem
-            else:
-                target_id = data.get("target_id", json_file.stem)
-                method = data.get("method", "unknown")
 
-            # Parse method into predictor and featurizer
-            # Format: {predictor}_{aligner}_{database} e.g., AlphaFold3_mmseqs2_uniref30
-            method_parts = method.split("_", 1)
-            if len(method_parts) >= 2:
-                predictor = method_parts[0]
-                featurizer = method_parts[1]  # aligner_database
-            else:
-                predictor = method
-                featurizer = ""
+            # Check for the expected 4-level structure
+            if len(parts) == 4:
+                featurizer = parts[0]
+                predictor = parts[1]
+                target_id = parts[2]
+                scorer_file = parts[3]  # e.g. "ost.json" or "dockq.json"
+                scorer_name = json_file.stem  # e.g. "ost" or "dockq"
 
-            # Extract each metric as a separate result entry
-            for metric_key, scorer_name in METRIC_KEYS:
-                if metric_key in data:
-                    score = data[metric_key]
-                    # Handle list values (take mean for arrays like dockq)
-                    if isinstance(score, list):
-                        score = sum(score) / len(score) if score else 0.0
+                method = f"{predictor}_{featurizer}"
+            else:
+                # Fallback for old/flat structure (though likely not used given Snakefile)
+                logger.warning(
+                    f"Unexpected directory structure for {json_file}, skipping parsing path metadata."
+                )
+                continue
+
+            # If the file is a specific scorer file (e.g. ost.json), it might contain multiple metrics
+            # We treat the file stem as the primary 'scorer' category, but we can extract multiple
+            # specific metrics from it.
+
+            # Common metrics we want to extract if present
+            # For header generation later, we will use "scorer_name" from here.
+            # But the 'scorer' column in the CSV is actually the specific metric (e.g. 'lddt', 'tm_score')
+
+            # Let's look at what's in the data.
+            # If data is a dict, iterate keys.
+
+            if isinstance(data, dict):
+                # Helper to add a score result
+                def add_result(metric_name, metric_value):
+                    # Handle lists (mean)
+                    if isinstance(metric_value, list):
+                        try:
+                            metric_value = (
+                                sum(metric_value) / len(metric_value)
+                                if metric_value
+                                else 0.0
+                            )
+                        except TypeError:
+                            return  # Skip non-numeric
 
                     results.append(
                         {
@@ -100,11 +100,26 @@ def load_eval_results(eval_dir: Path) -> list[dict]:
                             "method": method,
                             "predictor": predictor,
                             "featurizer": featurizer,
-                            "scorer_name": scorer_name,
-                            "score": float(score),
+                            "scorer_name": metric_name,
+                            "score": float(metric_value),
                             "_source_file": str(json_file),
                         }
                     )
+
+                # 1. Top level keys
+                for key, value in data.items():
+                    if isinstance(value, (int, float, list)) and key not in [
+                        "score_details"
+                    ]:
+                        # Avoid duplicating if 'score' is just a summary
+                        # But user wants everything so let's keep it unless it's redundant?
+                        add_result(key, value)
+
+                # 2. Nested score_details
+                if "score_details" in data and isinstance(data["score_details"], dict):
+                    for key, value in data["score_details"].items():
+                        if isinstance(value, (int, float, list)):
+                            add_result(key, value)
 
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse {json_file}: {e}")
