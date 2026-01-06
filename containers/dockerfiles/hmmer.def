@@ -1,0 +1,33 @@
+Bootstrap: docker
+From: biocontainers/hmmer:v3.2.1dfsg-1-deb_cv1
+
+%labels
+    Maintainer PSP Benchmark Pipeline
+    Description HMMER - Biological sequence analysis using profile HMMs
+    Source https://github.com/EddyRivasLab/hmmer
+
+%help
+    HMMER container for MSA generation via jackhmmer.
+    
+    Tools included:
+        - hmmsearch  - search profile HMM against sequence database
+        - hmmscan    - search sequence against profile HMM database
+        - jackhmmer  - iteratively search sequence against database
+        - phmmer     - search single sequence against database
+        - hmmbuild   - build profile HMM from alignment
+    
+    Usage:
+        apptainer exec hmmer.sif jackhmmer \
+            -A output.sto \
+            --cpu 4 \
+            query.fasta \
+            /db/uniref90.fasta
+
+%environment
+    export LC_ALL=C
+
+%post
+    mkdir -p /input /output /db
+
+%runscript
+    exec jackhmmer "$@"

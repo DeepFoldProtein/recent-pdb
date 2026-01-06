@@ -1,0 +1,56 @@
+# =============================================================================
+# ColabFold Dockerfile
+# =============================================================================
+# Build:
+#   docker build -t colabfold-local -f containers/dockerfiles/Dockerfile.colabfold .
+#   apptainer build containers/colabfold.sif docker-daemon://colabfold-local:latest
+#
+# Reference: https://github.com/sokrypton/ColabFold
+# =============================================================================
+
+ARG CUDA_VERSION=11.8.0
+ARG COLABFOLD_VERSION=1.5.5
+FROM nvidia/cuda:${CUDA_VERSION}-base-ubuntu22.04
+
+LABEL maintainer="PSP Benchmark Pipeline"
+LABEL description="ColabFold - Making protein folding accessible"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    wget \
+    curl \
+    git \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Miniforge (Mambaforge successor)
+RUN wget -qO /tmp/miniforge.sh https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh && \
+    bash /tmp/miniforge.sh -bfp /opt/conda && \
+    rm /tmp/miniforge.sh
+
+# Setup conda
+ENV PATH="/opt/conda/bin:$PATH"
+RUN conda config --set auto_update_conda false && \
+    conda install -y mamba -n base -c conda-forge
+
+# Install ColabFold
+ARG COLABFOLD_VERSION
+RUN mamba create -y -n colabfold -c conda-forge -c bioconda \
+    python=3.10 \
+    colabfold=${COLABFOLD_VERSION} \
+    && mamba clean -afy
+
+# Activate colabfold environment
+ENV PATH="/opt/conda/envs/colabfold/bin:$PATH"
+ENV MPLBACKEND=Agg
+
+# Create directories
+RUN mkdir -p /input /output /msa /cache
+ENV MPLCONFIGDIR=/cache
+ENV XDG_CACHE_HOME=/cache
+
+WORKDIR /workspace
+
+ENTRYPOINT ["colabfold_batch"]

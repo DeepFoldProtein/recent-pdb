@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: registry.scicore.unibas.ch/schwede/openstructure:latest
+
+%labels
+    Maintainer PSP Benchmark Pipeline
+    Description OpenStructure - Computational structural biology
+
+%help
+    OpenStructure container for lDDT calculation.
+    
+    Usage:
+        apptainer exec ost.sif ost script.py
+
+%environment
+    export LC_ALL=C
+
+%post
+    mkdir -p /input /output
+
+%runscript
+    exec ost "$@"
+
+%apprun OST
+    exec ost "$@"

@@ -1,0 +1,240 @@
+# =============================================================================
+# PSP Benchmark Pipeline Configuration
+# =============================================================================
+# Central configuration file for the protein structure prediction benchmark.
+# All paths and parameters can be customized here.
+
+# -----------------------------------------------------------------------------
+# Storage Paths
+# -----------------------------------------------------------------------------
+paths:
+  # Central PDB mirror (set via PDB_MMCIF_DIR in setup_env.sh)
+  pdb_master: "${PDB_MMCIF_DIR}"
+
+  # Sequence-based shared cache directory
+  msa_cache: "./cache/sequences"
+
+  # Output directory for all results
+  output_dir: "./outputs"
+
+  # Target list and ground truth storage
+  target_lists: "./data/target_lists"
+  ground_truths: "./data/ground_truths"
+
+  # Metadata database
+  registry_db: "./data/registry.sqlite"
+
+  # Apptainer container images
+  containers: "./containers"
+
+# -----------------------------------------------------------------------------
+# Benchmark Filtering Conditions
+# -----------------------------------------------------------------------------
+filters:
+  # Path to custom PDB ID list file (if set, overrides automatic filtering)
+  # Format: one PDB ID per line (e.g., "8abc"), lines starting with # are ignored
+  custom_targets_file: "targets_test.txt" # e.g., "./my_targets.txt"
+
+  # Maximum resolution (Å) for included structures
+  resolution_max: 2.5
+
+  # Only include structures released after this date (FoldBench cutoff)
+  release_date_after: "2023-01-13"
+
+  # Exclude obsoleted PDB entries
+  exclude_obsolete: true
+
+  # Minimum sequence length
+  min_seq_length: 30
+
+  # Maximum sequence length (for memory constraints)
+  max_seq_length: 2048
+
+# -----------------------------------------------------------------------------
+# Enabled Models and Scorers
+# -----------------------------------------------------------------------------
+# Models to run (remove any you don't want to use)
+enabled_models:
+  - "AlphaFold3"
+  # - "Protenix"
+  # - "ColabFold"
+
+# Evaluation metrics to compute
+enabled_scorers:
+  - "ost" # OpenStructure lDDT
+
+# -----------------------------------------------------------------------------
+# MSA Search Configuration
+# -----------------------------------------------------------------------------
+msa:
+  # Primary search method: "local" or "colabfold_server"
+  method: "local"
+
+  # ColabFold MSA server (for method: colabfold_server)
+  colabfold_server: "https://api.colabfold.com"
+
+  # Local MSA tools (for method: local)
+  tools:
+    mmseqs2:
+      enabled: true
+      binary: "mmseqs"
+      version: "18" # MMseqs2 version
+      # UniRef50 database at /store/database/mmseqs
+      databases:
+        - name: "uniref30"
+          version: "2023_02"
+          path: "/store/database/colabfold/uniref30_2302_db"
+        # - name: "colabfold_envdb"
+        #   version: "202108"
+        #   path: "/store/database/colabfold/colabfold_envdb_202108_db"
+        - name: "pdb100"
+          version: "230517"
+          path: "/store/database/colabfold/pdb100_230517"
+      params:
+        sensitivity: 8.0
+        max_seqs: 10000
+
+    hhblits:
+      enabled: false
+      binary: "hhblits"
+      version: "3.2.1" # HH-suite3
+      databases:
+        - name: "uniclust30"
+          version: "2023_02"
+          path: "/store/database/uniclust/UniRef30_2023_02"
+      params:
+        n_iterations: 3
+        e_value: 0.001
+        cpu: 4
+
+# -----------------------------------------------------------------------------
+# Model-Specific Configurations
+# -----------------------------------------------------------------------------
+models:
+  AlphaFold3:
+    # Apptainer/Singularity image
+    container: "${AF3_SIF}"
+
+    # Model weights directory
+    model_dir: "${AF3_MODEL_DIR}"
+
+    # Genetic databases directory
+    databases_dir: "${AF3_DB_DIR}"
+
+    # Input/output format
+    input_format: "json"
+    output_format: "cif"
+
+    # Inference settings
+    gpu_required: true
+    run_data_pipeline: false # We pre-compute MSAs
+    run_inference: true
+
+    # Command template (inside container)
+    inference_cmd: |
+      python run_alphafold.py \
+        --json_path={input} \
+        --model_dir=/root/models \
+        --output_dir={output_dir} \
+        --run_data_pipeline=false \
+        --run_inference=true
+
+  Protenix:
+    # Apptainer/Singularity image
+    container: "${PROTENIX_SIF}"
+
+    # Model name (from Protenix releases)
+    model_name: "protenix_base_default_v0.5.0"
+
+    # Input/output format
+    input_format: "json"
+    output_format: "cif"
+
+    # Inference settings
+    gpu_required: true
+    use_msa: true
+    dtype: "bf16"
+
+    # Command template
+    inference_cmd: |
+      protenix predict \
+        --input {input} \
+        --out_dir {output_dir} \
+        --model_name {model_name} \
+        --seeds 101 \
+        --use_msa {use_msa}
+
+  ColabFold:
+    # Apptainer/Singularity image (LocalColabFold)
+    container: "${COLABFOLD_SIF}"
+
+    # ColabFold mode: "alphafold2_multimer" or "alphafold2"
+    model_type: "alphafold2_multimer"
+
+    # Input/output format
+    input_format: "fasta" # or a3m
+    output_format: "pdb"
+
+    # Inference settings
+    gpu_required: true
+    num_recycle: 3
+    num_models: 5
+
+    # Command template
+    inference_cmd: |
+      colabfold_batch \
+        {input} \
+        {output_dir} \
+        --model-type {model_type} \
+        --num-recycle {num_recycle} \
+        --num-models {num_models}
+
+# -----------------------------------------------------------------------------
+# Apptainer Container Build Definitions
+# -----------------------------------------------------------------------------
+container_builds:
+  alphafold3:
+    source: "docker://google-deepmind/alphafold3:latest"
+    # Note: Requires manual download of model weights
+
+  protenix:
+    # https://github.com/bytedance/Protenix/blob/main/docs/docker_installation.md
+    source: "docker://ai4s-cn-beijing.cr.volces.com/infra/protenix:v0.0.6.1"
+
+  colabfold:
+    source: "docker://ghcr.io/sokrypton/colabfold:latest"
+    # Alternative: localcolabfold installer
+
+  mmseqs2:
+    source: "docker://soedinglab/mmseqs2:latest"
+
+  hhsuite:
+    source: "docker://soedinglab/hh-suite:latest"
+
+# -----------------------------------------------------------------------------
+# Resource Defaults (for SLURM scheduling)
+# -----------------------------------------------------------------------------
+resources:
+  default:
+    cpus: 4
+    memory_gb: 8
+    time_minutes: 60
+
+  msa_search:
+    cpus: 8
+    memory_gb: 64
+    time_minutes: 480
+
+  inference:
+    cpus: 4
+    memory_gb: 80
+    gpus: 1
+    time_minutes: 120
+    partition: "normal"
+
+# -----------------------------------------------------------------------------
+# Tool Paths (external tools)
+# -----------------------------------------------------------------------------
+tools:
+  tmalign_path: "TMalign"
+  dockq_path: ""

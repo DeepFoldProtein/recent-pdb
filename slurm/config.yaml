@@ -1,0 +1,74 @@
+# Snakemake SLURM Profile Configuration
+# ======================================
+# Use with: snakemake --profile slurm/
+
+# Executor settings
+executor: slurm
+jobs: 100 # Maximum concurrent SLURM jobs
+
+# Default resources for all rules
+default-resources:
+  slurm_partition: cpu
+  slurm_account: benchmark
+  runtime: 60 # minutes
+  mem_mb: 8000
+  cpus_per_task: 4
+
+# Resource overrides for specific rules
+set-resources:
+  # Stage 1: PDB Sync (light, network-bound)
+  sync_pdb:
+    runtime: 120
+    mem_mb: 4000
+    cpus_per_task: 1
+
+  # Stage 2: Target Registry (moderate)
+  build_registry:
+    runtime: 30
+    mem_mb: 8000
+    cpus_per_task: 2
+
+  # Stage 3: MSA Search (heavy, CPU-bound)
+  run_msa_mmseqs2:
+    slurm_partition: cpu-large
+    runtime: 480
+    mem_mb: 256000
+    cpus_per_task: 8
+
+  # Stage 4: Model Input Generation (I/O heavy)
+  gen_model_input:
+    runtime: 60
+    mem_mb: 32000
+    cpus_per_task: 4
+
+  # Stage 5: Inference (GPU required)
+  run_inference:
+    slurm_partition: gpu
+    runtime: 120
+    mem_mb: 64000
+    cpus_per_task: 4
+    slurm_extra: "'--gres=gpu:1'"
+
+  # Stage 6: Evaluation (moderate, parallel)
+  run_scorer:
+    runtime: 30
+    mem_mb: 8000
+    cpus_per_task: 2
+
+  # Stage 7: Aggregation (light)
+  summary_report:
+    runtime: 10
+    mem_mb: 4000
+    cpus_per_task: 1
+
+# SLURM-specific settings
+slurm: true
+latency-wait: 60 # Seconds to wait for output files
+restart-times: 3 # Retry failed jobs
+
+# Local rules (don't submit to SLURM)
+local-cores: 4
+localrules:
+  - all
+  - clean
+  - clean_all

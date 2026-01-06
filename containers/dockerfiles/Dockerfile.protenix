@@ -1,0 +1,35 @@
+# =============================================================================
+# Protenix Container
+# =============================================================================
+# Based on: https://github.com/bytedance/Protenix/blob/main/docs/docker_installation.md
+#
+# Build:
+#   docker build -t protenix:local -f containers/dockerfiles/Dockerfile.protenix .
+#   apptainer build containers/protenix.sif docker-daemon://protenix:local
+# =============================================================================
+
+FROM ai4s-cn-beijing.cr.volces.com/infra/protenix:v0.0.6.1
+
+LABEL maintainer="PSP Benchmark Pipeline"
+LABEL org.opencontainers.image.source="https://github.com/bytedance/Protenix"
+
+ENV PYTHONUNBUFFERED=1
+ENV CUDA_VISIBLE_DEVICES=0
+ENV PIP_INDEX_URL=https://pypi.org/simple
+
+WORKDIR /workspace
+
+# Install additional dependencies if needed
+RUN pip install --no-cache-dir \
+    pyyaml \
+    requests
+
+# Clone Protenix repo for latest code (optional, base image may already include)
+RUN git clone https://github.com/bytedance/protenix.git /opt/protenix
+RUN pip install -e /opt/protenix
+
+# Create directories for I/O
+RUN mkdir -p /input /output /msa
+
+# Default command
+CMD ["protenix", "--help"]

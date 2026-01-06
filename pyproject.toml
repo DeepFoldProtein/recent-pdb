@@ -1,0 +1,30 @@
+[project]
+name = "psp-benchmark"
+version = "0.1.0"
+description = "High-Performance Protein Structure Prediction Benchmark Pipeline"
+requires-python = ">=3.11"
+
+dependencies = [
+    "snakemake>=8.0",
+    "biopython>=1.83",
+    "pyyaml>=6.0",
+    "pandas>=2.0",
+    "numpy>=1.26",
+    "gemmi>=0.6",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+server = [
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]

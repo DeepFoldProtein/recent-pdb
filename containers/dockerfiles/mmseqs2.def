@@ -1,0 +1,25 @@
+Bootstrap: docker
+From: ghcr.io/soedinglab/mmseqs2:18-8cc5c
+
+%labels
+    Maintainer PSP Benchmark Pipeline
+    Description MMseqs2 - Ultra fast sequence search
+
+%help
+    MMseqs2 container for MSA generation.
+    
+    Usage:
+        apptainer exec mmseqs2.sif mmseqs easy-search \
+            query.fasta \
+            /db/uniref50 \
+            result.m8 \
+            tmp/
+
+%environment
+    export LC_ALL=C
+
+%post
+    mkdir -p /input /output /db /tmp
+
+%runscript
+    exec mmseqs "$@"

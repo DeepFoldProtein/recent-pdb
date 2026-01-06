@@ -1,0 +1,26 @@
+Bootstrap: docker
+From: soedinglab/hh-suite:latest
+
+%labels
+    Maintainer PSP Benchmark Pipeline
+    Description HH-suite - Remote protein homology detection
+    Source https://github.com/soedinglab/hh-suite
+
+%help
+    HH-suite container for MSA generation via HHblits.
+    
+    Usage:
+        apptainer exec hhsuite.sif hhblits \
+            -i query.fasta \
+            -d /db/uniclust30 \
+            -o result.hhr \
+            -oa3m result.a3m
+
+%environment
+    export LC_ALL=C
+
+%post
+    mkdir -p /input /output /db
+
+%runscript
+    exec hhblits "$@"
