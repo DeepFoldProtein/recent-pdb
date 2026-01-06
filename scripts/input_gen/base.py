@@ -141,6 +141,7 @@ def load_target_features(
     cache_dir: Path,
     target_lists_dir: Path,
     config: dict = None,
+    featurizer: str = None,
 ) -> Optional[TargetFeatures]:
     """
     Load target features from registry and cache.
@@ -149,6 +150,8 @@ def load_target_features(
         target_id: PDB ID of target
         cache_dir: Shared MSA cache directory
         target_lists_dir: Directory containing target details
+        config: Full pipeline config
+        featurizer: Featurizer name to filter MSA sources
 
     Returns:
         TargetFeatures object or None if not found
@@ -173,33 +176,61 @@ def load_target_features(
         logger.error(f"Target not found in registry: {target_id}")
         return None
 
+    # Get featurizer config if specified
+    featurizer_sources = []
+    if featurizer and config:
+        featurizer_cfg = config.get("featurizers", {}).get(featurizer, {})
+        featurizer_sources = featurizer_cfg.get("sources", [])
+
     # Build chain features
     chains = []
     for chain_info in target_info["chains"]:
         seq_hash = chain_info["seq_hash"]
 
-        # Collect all MSA paths for this hash
+        # Collect MSA paths based on featurizer sources
         msa_paths = []
-        # Look for known tool directories (handling version suffix)
-        for tool_prefix in ["mmseqs2", "hhblits"]:
-            # Glob for tool directories (e.g. mmseqs2_15)
-            for tool_dir in cache_dir.glob(f"{tool_prefix}*"):
-                if not tool_dir.is_dir():
-                    continue
 
-                # Iterate db directories
-                for db_dir in tool_dir.iterdir():
-                    if not db_dir.is_dir():
+        if featurizer_sources:
+            # Use only sources specified in featurizer config
+            for src in featurizer_sources:
+                aligner = src["aligner"]
+                db_id = src["database"]
+
+                # Get tool version from config
+                tool_cfg = config.get("msa", {}).get("tools", {}).get(aligner, {})
+                version = tool_cfg.get("version", "")
+                tool_dir_name = f"{aligner}_{version}" if version else aligner
+
+                # Get params hash
+                import hashlib
+
+                params = tool_cfg.get("params", {})
+                if params is None:
+                    params = {}
+                params_str = json.dumps(params, sort_keys=True)
+                phash = hashlib.md5(params_str.encode()).hexdigest()[:8]
+
+                # Build path
+                msa_file = cache_dir / tool_dir_name / db_id / phash / f"{seq_hash}.a3m"
+                if msa_file.exists():
+                    msa_paths.append(msa_file)
+                else:
+                    logger.warning(f"MSA not found: {msa_file}")
+        else:
+            # Fallback: collect all available MSAs
+            for tool_prefix in ["mmseqs2", "hhblits"]:
+                for tool_dir in cache_dir.glob(f"{tool_prefix}*"):
+                    if not tool_dir.is_dir():
                         continue
-
-                    # Iterate param directories (hash)
-                    for param_dir in db_dir.iterdir():
-                        if not param_dir.is_dir():
+                    for db_dir in tool_dir.iterdir():
+                        if not db_dir.is_dir():
                             continue
-
-                        msa_file = param_dir / f"{seq_hash}.a3m"
-                        if msa_file.exists():
-                            msa_paths.append(msa_file)
+                        for param_dir in db_dir.iterdir():
+                            if not param_dir.is_dir():
+                                continue
+                            msa_file = param_dir / f"{seq_hash}.a3m"
+                            if msa_file.exists():
+                                msa_paths.append(msa_file)
 
         if not msa_paths:
             # Fallback/Legacy: check merged

@@ -83,6 +83,7 @@ class ProtenixInputGenerator(ModelInputGenerator):
 def main():
     parser = argparse.ArgumentParser(description="Generate Protenix input pickle")
     parser.add_argument("--target-id", required=True, help="Target PDB ID")
+    parser.add_argument("--featurizer", required=True, help="Featurizer name")
     parser.add_argument(
         "--cache-dir", type=Path, required=True, help="MSA cache directory"
     )
@@ -98,7 +99,11 @@ def main():
 
     target_lists_dir = Path(config["paths"]["target_lists"])
     target_features = load_target_features(
-        args.target_id, args.cache_dir, target_lists_dir, config
+        args.target_id,
+        args.cache_dir,
+        target_lists_dir,
+        config,
+        featurizer=args.featurizer,
     )
 
     if target_features is None:

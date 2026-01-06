@@ -28,9 +28,10 @@ TARGET_LISTS = Path(config["paths"]["target_lists"])
 GROUND_TRUTHS = Path(config["paths"]["ground_truths"])
 CONTAINERS = Path(config["paths"].get("containers", "./containers"))
 
-# Enabled models and scorers
+# Enabled models, scorers, and featurizers
 ENABLED_MODELS = config.get("enabled_models", ["AlphaFold3", "Protenix", "ColabFold"])
 ENABLED_SCORERS = config.get("enabled_scorers", ["ost", "dockq", "tm_score"])
+ENABLED_FEATURIZERS = config.get("enabled_featurizers", [])
 
 # =============================================================================
 # Dynamic Target Discovery
@@ -188,6 +189,8 @@ rule run_msa_hhblits:
 def get_params_hash(tool_name):
     """Compute short hash of tool parameters."""
     params = config["msa"]["tools"].get(tool_name, {}).get("params", {})
+    if params is None:
+        params = {}
     s = json.dumps(params, sort_keys=True)
     import hashlib
     return hashlib.md5(s.encode()).hexdigest()[:8]
@@ -220,51 +223,79 @@ def get_target_msa_files(target_id):
         files.extend(get_msa_files_for_hash(h))
     return files
 
+def get_featurizer_msa_files(featurizer_name, seq_hash):
+    """Get MSA files for a specific featurizer's sources."""
+    featurizer_cfg = config.get("featurizers", {}).get(featurizer_name, {})
+    sources = featurizer_cfg.get("sources", [])
+    files = []
+    for src in sources:
+        aligner = src["aligner"]
+        db_name = src["database"]
+        version = get_tool_version(aligner)
+        phash = get_params_hash(aligner)
+        # Build db_dir key (name_version format)
+        db_map = get_db_map(aligner)
+        for db_key, db_cfg in db_map.items():
+            if f"{db_cfg['name']}_{db_cfg.get('version', '')}" == db_name or db_key == db_name:
+                files.append(CACHE_DIR / f"{aligner}_{version}" / db_key / phash / f"{seq_hash}.a3m")
+                break
+    return files
+
+def get_target_featurizer_msa_files(featurizer_name, target_id):
+    """Get all MSA files for a featurizer across all sequences in a target."""
+    files = []
+    for h in get_target_seq_hashes(target_id):
+        files.extend(get_featurizer_msa_files(featurizer_name, h))
+    return files
+
 # =============================================================================
 # Stage 4: Model Input Generation
 # =============================================================================
 rule gen_alphafold3_input:
     """Generate AlphaFold3 JSON input."""
     input:
-        msa_done=lambda wc: get_target_msa_files(wc.target_id)
+        msa_done=lambda wc: get_target_featurizer_msa_files(wc.featurizer, wc.target_id)
     output:
-        json=OUTPUT_DIR / "input" / "AlphaFold3" / "{target_id}" / "{target_id}.json"
+        json=OUTPUT_DIR / "input" / "{featurizer}" / "AlphaFold3" / "{target_id}" / "{target_id}.json"
     shell:
         """
         python -m scripts.input_gen.alphafold3 \
             --target-id {wildcards.target_id} \
+            --featurizer {wildcards.featurizer} \
             --cache-dir {CACHE_DIR} \
-            --output-dir {OUTPUT_DIR}/input/AlphaFold3 \
+            --output-dir {OUTPUT_DIR}/input/{wildcards.featurizer}/AlphaFold3 \
             --config config.yaml
         """
 
 rule gen_protenix_input:
     """Generate Protenix JSON input."""
     input:
-        msa_done=lambda wc: get_target_msa_files(wc.target_id)
+        msa_done=lambda wc: get_target_featurizer_msa_files(wc.featurizer, wc.target_id)
     output:
-        json=OUTPUT_DIR / "input" / "Protenix" / "{target_id}" / "{target_id}.json"
+        json=OUTPUT_DIR / "input" / "{featurizer}" / "Protenix" / "{target_id}" / "{target_id}.json"
     shell:
         """
         python -m scripts.input_gen.protenix \
             --target-id {wildcards.target_id} \
+            --featurizer {wildcards.featurizer} \
             --cache-dir {CACHE_DIR} \
-            --output-dir {OUTPUT_DIR}/input/Protenix \
+            --output-dir {OUTPUT_DIR}/input/{wildcards.featurizer}/Protenix \
             --config config.yaml
         """
 
 rule gen_colabfold_input:
     """Generate ColabFold FASTA/A3M input."""
     input:
-        msa_done=lambda wc: get_target_msa_files(wc.target_id)
+        msa_done=lambda wc: get_target_featurizer_msa_files(wc.featurizer, wc.target_id)
     output:
-        fasta=OUTPUT_DIR / "input" / "ColabFold" / "{target_id}" / "{target_id}.a3m"
+        fasta=OUTPUT_DIR / "input" / "{featurizer}" / "ColabFold" / "{target_id}" / "{target_id}.a3m"
     shell:
         """
         python -m scripts.input_gen.colabfold \
             --target-id {wildcards.target_id} \
+            --featurizer {wildcards.featurizer} \
             --cache-dir {CACHE_DIR} \
-            --output-dir {OUTPUT_DIR}/input/ColabFold \
+            --output-dir {OUTPUT_DIR}/input/{wildcards.featurizer}/ColabFold \
             --config config.yaml
         """
 
@@ -274,9 +305,9 @@ rule gen_colabfold_input:
 rule run_alphafold3:
     """Run AlphaFold3 inference."""
     input:
-        json=OUTPUT_DIR / "input" / "AlphaFold3" / "{target_id}" / "{target_id}.json"
+        json=OUTPUT_DIR / "input" / "{featurizer}" / "AlphaFold3" / "{target_id}" / "{target_id}.json"
     output:
-        cif=OUTPUT_DIR / "predictions" / "AlphaFold3" / "{target_id}.cif"
+        cif=OUTPUT_DIR / "pred" / "{featurizer}" / "AlphaFold3" / "{target_id}.cif"
     params:
         container=lambda wc: config["models"]["AlphaFold3"]["container"],
         model_dir=lambda wc: config["models"]["AlphaFold3"]["model_dir"],
@@ -313,9 +344,9 @@ rule run_alphafold3:
 rule run_protenix:
     """Run Protenix inference."""
     input:
-        json=OUTPUT_DIR / "input" / "Protenix" / "{target_id}" / "{target_id}.json"
+        json=OUTPUT_DIR / "input" / "{featurizer}" / "Protenix" / "{target_id}" / "{target_id}.json"
     output:
-        cif=OUTPUT_DIR / "predictions" / "Protenix" / "{target_id}.cif"
+        cif=OUTPUT_DIR / "pred" / "{featurizer}" / "Protenix" / "{target_id}.cif"
     params:
         container=lambda wc: config["models"]["Protenix"]["container"],
         model_name=lambda wc: config["models"]["Protenix"]["model_name"]
@@ -346,9 +377,9 @@ rule run_protenix:
 rule run_colabfold:
     """Run ColabFold inference."""
     input:
-        a3m=OUTPUT_DIR / "input" / "ColabFold" / "{target_id}" / "{target_id}.a3m"
+        a3m=OUTPUT_DIR / "input" / "{featurizer}" / "ColabFold" / "{target_id}" / "{target_id}.a3m"
     output:
-        pdb=OUTPUT_DIR / "predictions" / "ColabFold" / "{target_id}.cif"
+        pdb=OUTPUT_DIR / "pred" / "{featurizer}" / "ColabFold" / "{target_id}.cif"
     params:
         container=lambda wc: config["models"]["ColabFold"]["container"],
         model_type=lambda wc: config["models"]["ColabFold"]["model_type"],
@@ -381,7 +412,8 @@ rule run_colabfold:
 rule run_all_inference:
     """Aggregate rule for all inference jobs."""
     input:
-        expand(OUTPUT_DIR / "predictions" / "{model}" / "{target_id}.cif",
+        expand(OUTPUT_DIR / "pred" / "{featurizer}" / "{model}" / "{target_id}.cif",
+               featurizer=ENABLED_FEATURIZERS,
                model=ENABLED_MODELS,
                target_id=get_target_ids())
 
@@ -400,10 +432,10 @@ def get_ground_truth(wildcards):
 rule run_scorer:
     """Run a single scorer on a prediction."""
     input:
-        prediction=OUTPUT_DIR / "predictions" / "{model}" / "{target_id}.cif",
+        prediction=OUTPUT_DIR / "pred" / "{featurizer}" / "{model}" / "{target_id}.cif",
         ground_truth=get_ground_truth
     output:
-        score=OUTPUT_DIR / "evaluation" / "{model}" / "{target_id}" / "{scorer}.json"
+        score=OUTPUT_DIR / "eval" / "{featurizer}" / "{model}" / "{target_id}" / "{scorer}.json"
     resources:
         cpus=2,
         mem_mb=8000,
@@ -419,7 +451,8 @@ rule run_scorer:
 rule run_evaluation:
     """Aggregate rule for all evaluation jobs."""
     input:
-        expand(OUTPUT_DIR / "evaluation" / "{model}" / "{target_id}" / "{scorer}.json",
+        expand(OUTPUT_DIR / "eval" / "{featurizer}" / "{model}" / "{target_id}" / "{scorer}.json",
+               featurizer=ENABLED_FEATURIZERS,
                model=ENABLED_MODELS,
                target_id=get_target_ids(),
                scorer=ENABLED_SCORERS)
@@ -442,7 +475,7 @@ rule summary_report:
     shell:
         """
         python scripts/aggregate.py \
-            --eval-dir {OUTPUT_DIR}/evaluation \
+            --eval-dir {OUTPUT_DIR}/eval \
             --output-csv {output.csv} \
             --output-html {output.html} \
             --output-json {output.json} \
@@ -478,7 +511,7 @@ rule clean_outputs:
     """Remove only generated predictions and reports."""
     shell:
         """
-        rm -rf {OUTPUT_DIR}/predictions {OUTPUT_DIR}/evaluation
+        rm -rf {OUTPUT_DIR}/pred {OUTPUT_DIR}/eval
         rm -f {OUTPUT_DIR}/summary_report.*
         """
 

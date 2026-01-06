@@ -35,34 +35,98 @@ logger = logging.getLogger(__name__)
 
 
 def load_eval_results(eval_dir: Path) -> list[dict]:
-    """Load all evaluation result JSON files."""
+    """Load all evaluation result JSON files and extract multiple metrics.
+
+    Expected directory structure: {eval_dir}/{target}/{method}/results.json
+    Where method = {predictor}_{featurizer} (e.g., AlphaFold3_mmseqs2_uniref30)
+    and featurizer = {aligner}_{database}.
+    Each results.json contains multiple scores from OST compare_structures.
+    """
     results = []
+
+    # Metrics to extract from OST compare_structures output
+    METRIC_KEYS = [
+        ("lddt", "lddt"),
+        ("global_lddt", "global_lddt"),
+        ("qs_score", "qs_score"),
+        ("qs_global", "qs_global"),
+        ("ics", "ics"),
+        ("ips", "ips"),
+        ("dockq_ave", "dockq_ave"),
+        ("dockq_wave", "dockq_wave"),
+        ("tm_score", "tm_score"),
+    ]
 
     for json_file in eval_dir.rglob("*.json"):
         try:
             with open(json_file) as f:
-                result = json.load(f)
-                result["_source_file"] = str(json_file)
-                results.append(result)
+                data = json.load(f)
+
+            # Extract target_id and method from path: {eval_dir}/{target}/{method}/results.json
+            parts = json_file.relative_to(eval_dir).parts
+            if len(parts) >= 3:
+                target_id = parts[0]
+                method = parts[
+                    1
+                ]  # predictor_featurizer (e.g., AlphaFold3_mmseqs2_uniref30)
+            elif len(parts) >= 2:
+                target_id = parts[0]
+                method = json_file.stem
+            else:
+                target_id = data.get("target_id", json_file.stem)
+                method = data.get("method", "unknown")
+
+            # Parse method into predictor and featurizer
+            # Format: {predictor}_{aligner}_{database} e.g., AlphaFold3_mmseqs2_uniref30
+            method_parts = method.split("_", 1)
+            if len(method_parts) >= 2:
+                predictor = method_parts[0]
+                featurizer = method_parts[1]  # aligner_database
+            else:
+                predictor = method
+                featurizer = ""
+
+            # Extract each metric as a separate result entry
+            for metric_key, scorer_name in METRIC_KEYS:
+                if metric_key in data:
+                    score = data[metric_key]
+                    # Handle list values (take mean for arrays like dockq)
+                    if isinstance(score, list):
+                        score = sum(score) / len(score) if score else 0.0
+
+                    results.append(
+                        {
+                            "target_id": target_id,
+                            "method": method,
+                            "predictor": predictor,
+                            "featurizer": featurizer,
+                            "scorer_name": scorer_name,
+                            "score": float(score),
+                            "_source_file": str(json_file),
+                        }
+                    )
+
         except json.JSONDecodeError as e:
             logger.warning(f"Failed to parse {json_file}: {e}")
+        except Exception as e:
+            logger.warning(f"Error processing {json_file}: {e}")
 
-    logger.info(f"Loaded {len(results)} evaluation results")
+    logger.info(f"Loaded {len(results)} evaluation results from {eval_dir}")
     return results
 
 
 def build_leaderboard(results: list[dict], config: dict) -> dict:
     """Build leaderboard structure from results."""
-    # Group by model
-    model_scores = defaultdict(lambda: defaultdict(list))
+    # Group by method (predictor_featurizer)
+    method_scores = defaultdict(lambda: defaultdict(list))
 
     for result in results:
-        model = result.get("model_name", "unknown")
+        method = result.get("method", "unknown")
         scorer = result.get("scorer_name", "unknown")
         score = result.get("score", 0.0)
         target = result.get("target_id", "unknown")
 
-        model_scores[model][scorer].append(
+        method_scores[method][scorer].append(
             {
                 "target_id": target,
                 "score": score,
@@ -76,11 +140,11 @@ def build_leaderboard(results: list[dict], config: dict) -> dict:
             "enabled_models": config.get("enabled_models", []),
             "enabled_scorers": config.get("enabled_scorers", []),
         },
-        "models": {},
+        "methods": {},
     }
 
-    for model, scorer_results in model_scores.items():
-        model_stats = {
+    for method, scorer_results in method_scores.items():
+        method_stats = {
             "total_targets": 0,
             "scorers": {},
         }
@@ -88,7 +152,7 @@ def build_leaderboard(results: list[dict], config: dict) -> dict:
         for scorer, scores in scorer_results.items():
             score_values = [s["score"] for s in scores]
 
-            model_stats["scorers"][scorer] = {
+            method_stats["scorers"][scorer] = {
                 "mean": sum(score_values) / len(score_values) if score_values else 0,
                 "median": sorted(score_values)[len(score_values) // 2]
                 if score_values
@@ -101,11 +165,11 @@ def build_leaderboard(results: list[dict], config: dict) -> dict:
                 if score_values
                 else 0,
             }
-            model_stats["total_targets"] = max(
-                model_stats["total_targets"], len(scores)
+            method_stats["total_targets"] = max(
+                method_stats["total_targets"], len(scores)
             )
 
-        leaderboard["models"][model] = model_stats
+        leaderboard["methods"][method] = method_stats
 
     return leaderboard
 
@@ -118,7 +182,7 @@ def generate_csv(results: list[dict], output_path: Path):
         # Pivot to wide format
         if not df.empty:
             pivot = df.pivot_table(
-                index=["target_id", "model_name"],
+                index=["target_id", "predictor", "featurizer"],
                 columns="scorer_name",
                 values="score",
                 aggfunc="first",
@@ -127,7 +191,7 @@ def generate_csv(results: list[dict], output_path: Path):
         else:
             # Empty file
             with open(output_path, "w") as f:
-                f.write("target_id,model_name\n")
+                f.write("target_id,predictor,featurizer\n")
     else:
         # Manual CSV generation
         with open(output_path, "w") as f:
@@ -136,17 +200,23 @@ def generate_csv(results: list[dict], output_path: Path):
                 scorers = sorted(set(r.get("scorer_name", "") for r in results))
 
                 # Header
-                f.write("target_id,model_name," + ",".join(scorers) + "\n")
+                f.write("target_id,predictor,featurizer," + ",".join(scorers) + "\n")
 
-                # Group by target/model
+                # Group by target/predictor/featurizer
                 grouped = defaultdict(dict)
                 for r in results:
-                    key = (r.get("target_id", ""), r.get("model_name", ""))
+                    key = (
+                        r.get("target_id", ""),
+                        r.get("predictor", ""),
+                        r.get("featurizer", ""),
+                    )
                     grouped[key][r.get("scorer_name", "")] = r.get("score", 0)
 
                 # Rows
-                for (target, model), scores in sorted(grouped.items()):
-                    row = [target, model] + [str(scores.get(s, "")) for s in scorers]
+                for (target, predictor, featurizer), scores in sorted(grouped.items()):
+                    row = [target, predictor, featurizer] + [
+                        str(scores.get(s, "")) for s in scorers
+                    ]
                     f.write(",".join(row) + "\n")
 
     logger.info(f"Generated CSV: {output_path}")
@@ -283,11 +353,11 @@ def generate_html(leaderboard: dict, output_path: Path):
         <p class="meta">Generated: {leaderboard["generated_at"]}</p>
 """
 
-    # Model cards
-    for model_name, stats in sorted(leaderboard.get("models", {}).items()):
+    # Method cards
+    for method_name, stats in sorted(leaderboard.get("methods", {}).items()):
         html += f"""
         <div class="card">
-            <h2>{model_name}</h2>
+            <h2>{method_name}</h2>
             <div class="stats-grid">
                 <div class="stat">
                     <div class="stat-value">{stats["total_targets"]}</div>
@@ -414,8 +484,8 @@ def main():
     print("BENCHMARK SUMMARY")
     print("=" * 60)
 
-    for model, stats in sorted(leaderboard.get("models", {}).items()):
-        print(f"\n{model}:")
+    for method, stats in sorted(leaderboard.get("methods", {}).items()):
+        print(f"\n{method}:")
         for scorer, scorer_stats in sorted(stats.get("scorers", {}).items()):
             print(
                 f"  {scorer:12s}: mean={scorer_stats['mean']:.4f}, "

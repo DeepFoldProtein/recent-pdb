@@ -264,8 +264,7 @@ class MMseqs2Searcher(MSASearcher):
             .get("mmseqs2", {})
             .get("params", {})
         )
-        sensitivity = params.get("sensitivity", 8.0)
-        max_seqs = params.get("max_seqs", 10000)
+        params = params if params else {}
 
         if output_path.exists():
             logger.info(f"Skipping mmseqs2 (output exists): {output_path}")
@@ -307,14 +306,11 @@ class MMseqs2Searcher(MSASearcher):
                 database,
                 str(result_db),
                 str(tmp),
-                "-s",
-                str(sensitivity),
                 "--num-iterations",
                 "3",  # Usually 3 is good for sensitivity
-                "--max-seqs",
-                str(max_seqs),
                 "--threads",
                 str(self.threads),
+                *(item for k, v in params.items() for item in (f"--{k}", str(v))),
             ]
 
             if self.container:

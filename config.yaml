@@ -61,7 +61,35 @@ enabled_models:
 
 # Evaluation metrics to compute
 enabled_scorers:
-  - "ost" # OpenStructure lDDT
+  - "ost" # OpenStructure
+
+# -----------------------------------------------------------------------------
+# Featurizer Definitions (Aligner + DB combinations)
+# -----------------------------------------------------------------------------
+# Each featurizer defines which MSA sources to use and how to merge them.
+# Name format: {aligner1}_{db1}+{aligner2}_{db2}+...
+featurizers:
+  mmseqs2_uniref30+mmseqs2_pdb100:
+    sources:
+      - aligner: mmseqs2
+        database: uniref30_2023_02
+      - aligner: mmseqs2
+        database: pdb100_230517
+    merge:
+      strategy: "top_n" # top_n | uniform | weighted
+      max_seqs: null # null or -1 for unlimited
+
+  mmseqs2_uniref30:
+    sources:
+      - aligner: mmseqs2
+        database: uniref30_2023_02
+    merge:
+      strategy: "top_n"
+      max_seqs: null
+
+# Featurizers to use for benchmarking
+enabled_featurizers:
+  - "mmseqs2_uniref30+mmseqs2_pdb100"
 
 # -----------------------------------------------------------------------------
 # MSA Search Configuration
@@ -91,8 +119,6 @@ msa:
           version: "230517"
           path: "/store/database/colabfold/pdb100_230517"
       params:
-        sensitivity: 8.0
-        max_seqs: 10000
 
     hhblits:
       enabled: false
