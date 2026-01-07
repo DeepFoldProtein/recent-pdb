@@ -539,9 +539,9 @@ rule clean_registry:
     """Remove registry database and generated target lists."""
     shell:
         """
-        rm -rf {DATA_DIR}/target_lists
-        rm -f {DATA_DIR}/registry.sqlite
-        rm -f outputs/.sync_done
+        rm -rf {TARGET_LISTS}
+        rm -f {REGISTRY_DB}
+        rm -f {OUTPUT_DIR}/.sync_done
         """
 
 rule clean_all:
