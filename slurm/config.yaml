@@ -8,11 +8,10 @@ jobs: 100 # Maximum concurrent SLURM jobs
 
 # Default resources for all rules
 default-resources:
-  slurm_partition: cpu
-  slurm_account: benchmark
+  slurm_partition: normal
   runtime: 60 # minutes
   mem_mb: 8000
-  cpus_per_task: 4
+  cpus_per_task: 8
 
 # Resource overrides for specific rules
 set-resources:
@@ -30,7 +29,7 @@ set-resources:
 
   # Stage 3: MSA Search (heavy, CPU-bound)
   run_msa_mmseqs2:
-    slurm_partition: cpu-large
+    slurm_partition: normal
     runtime: 480
     mem_mb: 256000
     cpus_per_task: 8
@@ -43,7 +42,7 @@ set-resources:
 
   # Stage 5: Inference (GPU required)
   run_inference:
-    slurm_partition: gpu
+    slurm_partition: normal
     runtime: 120
     mem_mb: 64000
     cpus_per_task: 4
@@ -60,15 +59,3 @@ set-resources:
     runtime: 10
     mem_mb: 4000
     cpus_per_task: 1
-
-# SLURM-specific settings
-slurm: true
-latency-wait: 60 # Seconds to wait for output files
-restart-times: 3 # Retry failed jobs
-
-# Local rules (don't submit to SLURM)
-local-cores: 4
-localrules:
-  - all
-  - clean
-  - clean_all
