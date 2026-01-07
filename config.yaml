@@ -36,7 +36,7 @@ filters:
   custom_targets_file: "./my_targets.txt"
 
   # Maximum resolution (Å) for included structures
-  resolution_max: 2.5
+  resolution_max: 4.5
 
   # Only include structures released after this date (FoldBench cutoff)
   release_date_after: "2023-01-13"
