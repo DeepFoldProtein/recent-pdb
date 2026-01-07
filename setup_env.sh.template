@@ -15,11 +15,6 @@ export PROTENIX_CACHE_DIR="./resources/protenix_release"
 export COLABFOLD_CACHE_DIR="./resources/colabfold"
 
 # ==========================================
-# Output Directories
-# ==========================================
-export OUTPUT_ROOT="test_data/predictions"
-
-# ==========================================
 # Container Paths
 # ==========================================
 export CONTAINER_DIR="containers"
