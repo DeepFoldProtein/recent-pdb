@@ -18,6 +18,4 @@ uv run snakemake -n
 
 ## Scorers
 
-- lDDT (OpenStructure via Apptainer)
-- DockQ
-- TM-score
+- OpenStructure
