@@ -17,24 +17,9 @@ import os
 import json
 from pathlib import Path
 
-def deep_merge(base, override):
-    """Recursively merge override dict into base dict."""
-    for key, value in override.items():
-        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-            deep_merge(base[key], value)
-        else:
-            base[key] = value
-    return base
 
 # Load configuration
 configfile: "config.yaml"
-
-# Merge local overrides if exists
-if os.path.exists("config.local.yaml"):
-    import yaml
-    with open("config.local.yaml") as f:
-        local_config = yaml.safe_load(f) or {}
-    deep_merge(config, local_config)
 
 # Resolve paths (relative for portability)
 CACHE_DIR = Path(config["paths"]["msa_cache"])
@@ -73,11 +58,6 @@ def get_target_seq_hashes(target_id):
         mapping = json.loads(mapping_file.read_text())
         return [h for h, targets in mapping.items() if target_id in targets]
     return []
-
-# =============================================================================
-# Container Definitions (Apptainer/Singularity)
-# =============================================================================
-container: None  # Default: no container
 
 # =============================================================================
 # Stage 1: PDB Sync & Audit
@@ -141,6 +121,22 @@ def get_db_args(wildcards, tool_name):
     db = get_db_map(tool_name)[wildcards.db_dir]
     return db["name"], db.get("version", "")
 
+def get_tool_container(tool_name):
+    """Get and validate container path from config for MSA tool."""
+    container_path = config["msa"]["tools"].get(tool_name, {}).get("sif_path")
+    if not container_path or container_path.startswith("/path/to/"):
+        raise ValueError(
+            f"Container path for '{tool_name}' not configured in config.yaml. "
+            f"Please set msa.tools.{tool_name}.container to a valid .sif path."
+        )
+    container_img = Path(container_path)
+    if not container_img.exists():
+        raise FileNotFoundError(
+            f"Container not found: {container_path}. "
+            f"Run 'snakemake build_containers' or set correct path in config.yaml."
+        )
+    return container_img
+
 rule run_msa_mmseqs2:
     """Run MMseqs2 search for a single sequence hash and database."""
     input:
@@ -149,28 +145,26 @@ rule run_msa_mmseqs2:
         a3m=CACHE_DIR / "mmseqs2_{version}" / "{db_dir}" / "{phash}" / "{seq_hash}.a3m"
     params:
         cache_dir=CACHE_DIR,
-        container=CONTAINERS / "mmseqs2.sif" if (CONTAINERS / "mmseqs2.sif").exists() else None,
-        db_path=lambda wc: get_db_path(wc, "mmseqs2"),
-        msa_params=lambda wc: config["msa"]["tools"]["mmseqs2"]["params"]
+        sif_path=lambda wc: get_tool_container("mmseqs2"),
+        db_name=lambda wc: get_db_args(wc, "mmseqs2")[0],
+        db_version=lambda wc: get_db_args(wc, "mmseqs2")[1]
     resources:
         cpus=16,
         mem_mb=32000,
         runtime=240
-    run:
-        db_name, db_version = get_db_args(wildcards, "mmseqs2")
-        container_arg = f"--container {params.container}" if params.container else ""
-        shell(f"""
+    shell:
+        """
         python -m scripts.msa_search \
             --seq-hash {wildcards.seq_hash} \
             --cache-dir {params.cache_dir} \
             --config config.yaml \
             --tool mmseqs2 \
-            --db-name {db_name} \
-            --db-version "{db_version}" \
-            {container_arg} \
+            --db-name {params.db_name} \
+            --db-version "{params.db_version}" \
+            --container {params.sif_path} \
             --threads {resources.cpus} \
             --output {output.a3m}
-        """)
+        """
 
 rule run_msa_hhblits:
     """Run HHblits search for a single sequence hash and database."""
@@ -180,7 +174,7 @@ rule run_msa_hhblits:
         a3m=CACHE_DIR / "hhblits_{version}" / "{db_dir}" / "{phash}" / "{seq_hash}.a3m"
     params:
         cache_dir=CACHE_DIR,
-        container=CONTAINERS / "hhsuite.sif" if (CONTAINERS / "hhsuite.sif").exists() else None,
+        sif_path=lambda wc: get_tool_container("hhblits"),
         db_path=lambda wc: get_db_path(wc, "hhblits"),
         msa_params=lambda wc: config["msa"]["tools"]["hhblits"]["params"]
     resources:
@@ -198,6 +192,7 @@ rule run_msa_hhblits:
             --tool hhblits \
             --db-name {db_name} \
             --db-version "{db_version}" \
+            --container {params.sif_path} \
             --threads {resources.cpus} \
             --output {output.a3m}
         """)
@@ -337,7 +332,7 @@ rule run_alphafold3:
     output:
         cif=OUTPUT_DIR / "pred" / "{featurizer}" / "AlphaFold3" / "{target_id}.cif"
     params:
-        container=lambda wc: config["models"]["AlphaFold3"]["container"],
+        sif_path=lambda wc: config["models"]["AlphaFold3"]["sif_path"],
         model_dir=lambda wc: config["models"]["AlphaFold3"]["model_dir"],
         db_dir=lambda wc: config["models"]["AlphaFold3"]["databases_dir"]
     resources:
@@ -354,7 +349,7 @@ rule run_alphafold3:
             --bind $(dirname {output.cif}):/output \
             --bind {params.model_dir}:/root/models \
             --bind {params.db_dir}:/root/public_databases \
-            {params.container} \
+            {params.sif_path} \
             python /app/alphafold/run_alphafold.py \
                 --json_path=/input/$(basename {input.json}) \
                 --model_dir=/root/models \
@@ -376,7 +371,7 @@ rule run_protenix:
     output:
         cif=OUTPUT_DIR / "pred" / "{featurizer}" / "Protenix" / "{target_id}.cif"
     params:
-        container=lambda wc: config["models"]["Protenix"]["container"],
+        sif_path=lambda wc: config["models"]["Protenix"]["sif_path"],
         model_name=lambda wc: config["models"]["Protenix"]["model_name"]
     resources:
         cpus=4,
@@ -390,7 +385,7 @@ rule run_protenix:
         apptainer exec --nv \
             --bind $(dirname {input.json}):/input \
             --bind $(dirname {output.cif}):/output \
-            {params.container} \
+            {params.sif_path} \
             protenix predict \
                 --input /input/$(basename {input.json}) \
                 --out_dir /output \
@@ -409,7 +404,7 @@ rule run_colabfold:
     output:
         pdb=OUTPUT_DIR / "pred" / "{featurizer}" / "ColabFold" / "{target_id}.cif"
     params:
-        container=lambda wc: config["models"]["ColabFold"]["container"],
+        sif_path=lambda wc: config["models"]["ColabFold"]["sif_path"],
         model_type=lambda wc: config["models"]["ColabFold"]["model_type"],
         num_recycle=lambda wc: config["models"]["ColabFold"]["num_recycle"]
     resources:
@@ -424,7 +419,7 @@ rule run_colabfold:
         apptainer exec --nv \
             --bind $(dirname {input.a3m}):/input \
             --bind $(dirname {output.pdb}):/output \
-            {params.container} \
+            {params.sif_path} \
             colabfold_batch \
                 /input/$(basename {input.a3m}) \
                 /output \

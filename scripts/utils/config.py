@@ -22,28 +22,18 @@ def deep_merge(base: dict, override: dict) -> dict:
 
 def load_config(config_path: Path | str = "config.yaml") -> dict[str, Any]:
     """
-    Load configuration with local overrides.
+    Load configuration from config.yaml.
 
     Args:
-        config_path: Path to main config file (default: config.yaml)
+        config_path: Path to config file (default: config.yaml)
 
     Returns:
-        Merged configuration dictionary
-
-    The function looks for a config.local.yaml in the same directory
-    and merges it over the base config if present.
+        Configuration dictionary
     """
     config_path = Path(config_path)
 
     with open(config_path) as f:
         config = yaml.safe_load(f)
-
-    # Merge local overrides if exists
-    local_path = config_path.parent / "config.local.yaml"
-    if local_path.exists():
-        with open(local_path) as f:
-            local_config = yaml.safe_load(f) or {}
-        deep_merge(config, local_config)
 
     return config
 

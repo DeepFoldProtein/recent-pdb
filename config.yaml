@@ -107,6 +107,8 @@ msa:
       enabled: true
       binary: "mmseqs"
       version: "18" # MMseqs2 version
+      # [CUSTOMIZE] Apptainer container (required for cluster execution)
+      sif_path: "/path/to/containers/mmseqs2.sif"
       # UniRef50 database at /store/database/mmseqs
       databases:
         - name: "uniref30"
@@ -125,6 +127,8 @@ msa:
       enabled: false
       binary: "hhblits"
       version: "3.2.1" # HH-suite3
+      # [CUSTOMIZE] Apptainer container (required for cluster execution)
+      sif_path: "/path/to/containers/hhsuite.sif"
       databases:
         - name: "uniclust30"
           version: "2023_02"
@@ -140,7 +144,7 @@ msa:
 models:
   AlphaFold3:
     # [CUSTOMIZE] Apptainer/Singularity image path
-    container: "/path/to/containers/alphafold3.sif"
+    sif_path: "/path/to/containers/alphafold3.sif"
 
     # [CUSTOMIZE] Model weights directory
     model_dir: "/path/to/af3/models"
@@ -168,7 +172,7 @@ models:
 
   Protenix:
     # [CUSTOMIZE] Apptainer/Singularity image path
-    container: "/path/to/containers/protenix.sif"
+    sif_path: "/path/to/containers/protenix.sif"
 
     # Model name (from Protenix releases)
     model_name: "protenix_base_default_v0.5.0"
@@ -193,7 +197,7 @@ models:
 
   ColabFold:
     # [CUSTOMIZE] Apptainer/Singularity image path
-    container: "/path/to/containers/colabfold.sif"
+    sif_path: "/path/to/containers/colabfold.sif"
 
     # ColabFold mode: "alphafold2_multimer" or "alphafold2"
     model_type: "alphafold2_multimer"
@@ -219,7 +223,7 @@ models:
 # -----------------------------------------------------------------------------
 # Apptainer Container Build Definitions
 # -----------------------------------------------------------------------------
-container_builds:
+sif_builds:
   alphafold3:
     source: "docker://google-deepmind/alphafold3:latest"
     # Note: Requires manual download of model weights
