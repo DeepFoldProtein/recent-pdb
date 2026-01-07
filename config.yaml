@@ -119,6 +119,7 @@ msa:
           version: "230517"
           path: "/store/database/colabfold/pdb100_230517"
       params:
+        max_seqs: 10000
 
     hhblits:
       enabled: false

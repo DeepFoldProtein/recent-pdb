@@ -309,7 +309,11 @@ class MMseqs2Searcher(MSASearcher):
                 "3",  # Usually 3 is good for sensitivity
                 "--threads",
                 str(self.threads),
-                *(item for k, v in params.items() for item in (f"--{k}", str(v))),
+                *(
+                    item
+                    for k, v in params.items()
+                    for item in (f"--{k.replace('_', '-')}", str(v))
+                ),
             ]
 
             if self.container:
@@ -470,6 +474,7 @@ def _load_config(config_path):
     """Load config with local overrides."""
     import yaml
     from pathlib import Path
+
     config_path = Path(config_path)
     with open(config_path) as f:
         config = yaml.safe_load(f)
@@ -478,7 +483,11 @@ def _load_config(config_path):
         with open(local_path) as f:
             local_config = yaml.safe_load(f) or {}
         for key, value in local_config.items():
-            if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+            if (
+                key in config
+                and isinstance(config[key], dict)
+                and isinstance(value, dict)
+            ):
                 config[key].update(value)
             else:
                 config[key] = value
