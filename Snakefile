@@ -248,6 +248,18 @@ def get_target_featurizer_msa_files(featurizer_name, target_id):
         files.extend(get_featurizer_msa_files(featurizer_name, h))
     return files
 
+def get_all_msa_files():
+    """Get all MSA files for all sequence hashes."""
+    files = []
+    for seq_hash in get_seq_hashes():
+        files.extend(get_msa_files_for_hash(seq_hash))
+    return files
+
+rule run_all_msa:
+    """Aggregate rule for all MSA search jobs."""
+    input:
+        get_all_msa_files()
+
 # =============================================================================
 # Stage 4: Model Input Generation
 # =============================================================================
