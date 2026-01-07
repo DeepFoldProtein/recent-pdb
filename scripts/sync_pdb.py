@@ -16,6 +16,7 @@ import logging
 import sqlite3
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -227,7 +228,19 @@ def update_registry(
 
     cursor = conn.cursor()
 
+    start_time = time.time()
+    total_processed = 0
+
     for cif_path in scan_pdb_directory(pdb_dir):
+        total_processed += 1
+        if total_processed % 100 == 0:
+            elapsed = time.time() - start_time
+            rate = total_processed / elapsed if elapsed > 0 else 0
+            logger.info(
+                f"Processed {total_processed} items. Speed: {rate:.2f} items/sec "
+                f"(Added: {added}, Updated: {updated}, Skipped: {skipped})"
+            )
+
         pdb_id = cif_path.stem.split(".")[0].upper()
         file_mtime = cif_path.stat().st_mtime
 
@@ -274,6 +287,13 @@ def update_registry(
             updated += 1
         else:
             added += 1
+
+    elapsed = time.time() - start_time
+    rate = total_processed / elapsed if elapsed > 0 else 0
+    logger.info(
+        f"Processed {total_processed} items. Speed: {rate:.2f} items/sec "
+        f"(Added: {added}, Updated: {updated}, Skipped: {skipped})"
+    )
 
     conn.commit()
     return added, updated, skipped
