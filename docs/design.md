@@ -60,9 +60,18 @@ Models run in isolated containers:
 |-------|-----------|-------|--------|
 | AlphaFold3 | `alphafold3.sif` | JSON | CIF |
 | Protenix | `protenix.sif` | JSON | CIF |
+| Protenix | `protenix.sif` | JSON | CIF |
 | ColabFold | `colabfold.sif` | A3M/FASTA | PDB |
 
-### 3. In-House MSA Server
+### 3. Featurizers (New)
+
+Flexible MSA generation strategy:
+
+- Combine multiple aligners (MMseqs2, HHblits)
+- Combine multiple databases (UniRef30, PDB100)
+- Configurable merge strategies (Top-N, Uniform, etc.)
+
+### 4. In-House MSA Server
 
 FastAPI-based server compatible with ColabFold API:
 
@@ -70,7 +79,7 @@ FastAPI-based server compatible with ColabFold API:
 - **GPU Support**: MMseqs2 GPU server mode
 - **Databases**: UniRef30, ColabFold EnvDB
 
-### 4. Evaluation Scorers
+### 5. Evaluation Scorers
 
 | Scorer | Metric | Tool |
 |--------|--------|------|
@@ -78,7 +87,7 @@ FastAPI-based server compatible with ColabFold API:
 | DockQ | Interface Quality | DockQ.py |
 | TM-score | Global Similarity | TMalign |
 
-### 5. Snakemake DAG
+### 6. Snakemake DAG
 
 ```
 sync_pdb → build_registry → run_msa_* → merge_msa → gen_*_input

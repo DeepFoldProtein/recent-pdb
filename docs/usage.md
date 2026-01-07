@@ -104,6 +104,9 @@ AlphaFold3, Protenix, ColabFold require Docker build then Apptainer conversion:
 ./scripts/build_docker_containers.sh alphafold3
 ./scripts/build_docker_containers.sh colabfold
 ./scripts/build_docker_containers.sh protenix
+
+# Note: Protenix requires a one-time resource setup (CCD, etc.)
+./scripts/setup_resources.sh
 ```
 
 **Container Status:**
@@ -242,6 +245,25 @@ enabled_models:
   - "AlphaFold3"
   - "Protenix"
   - "ColabFold"
+
+models:
+  AlphaFold3:
+    use_templates: true # Set to false to disable template generation
+
+# -----------------------------------------------------------------------------
+# Featurizers (New)
+# -----------------------------------------------------------------------------
+# Define how to search and merge MSAs
+featurizers:
+  default_setup:
+    sources:
+      - aligner: mmseqs2
+        database: uniref30_2023_02
+    merge:
+      strategy: "top_n"
+
+enabled_featurizers:
+  - "default_setup"
 ```
 
 ---
