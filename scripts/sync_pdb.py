@@ -22,7 +22,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Iterator, Optional
 
-import yaml
 
 try:
     import gemmi
@@ -299,6 +298,25 @@ def update_registry(
     return added, updated, skipped
 
 
+def _load_config(config_path):
+    """Load config with local overrides."""
+    import yaml
+    from pathlib import Path
+    config_path = Path(config_path)
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    local_path = config_path.parent / "config.local.yaml"
+    if local_path.exists():
+        with open(local_path) as f:
+            local_config = yaml.safe_load(f) or {}
+        for key, value in local_config.items():
+            if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+                config[key].update(value)
+            else:
+                config[key] = value
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Synchronize PDB mirror and update metadata registry"
@@ -340,8 +358,7 @@ def main():
 
     # Load config if pdb_master not specified
     if args.pdb_master is None:
-        with open(args.config) as f:
-            config = yaml.safe_load(f)
+        config = _load_config(args.config)
         args.pdb_master = Path(config["paths"]["pdb_master"])
 
     # Ensure directories exist

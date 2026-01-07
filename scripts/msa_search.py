@@ -16,7 +16,6 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-import yaml
 
 logging.basicConfig(
     level=logging.INFO,
@@ -467,6 +466,25 @@ def run_msa_search(
     return success
 
 
+def _load_config(config_path):
+    """Load config with local overrides."""
+    import yaml
+    from pathlib import Path
+    config_path = Path(config_path)
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    local_path = config_path.parent / "config.local.yaml"
+    if local_path.exists():
+        with open(local_path) as f:
+            local_config = yaml.safe_load(f) or {}
+        for key, value in local_config.items():
+            if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+                config[key].update(value)
+            else:
+                config[key] = value
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run MSA search for a sequence hash")
     parser.add_argument("--seq-hash", type=str, required=True, help="Sequence hash")
@@ -496,8 +514,7 @@ def main():
     args = parser.parse_args()
 
     # Load config
-    with open(args.config) as f:
-        config = yaml.safe_load(f)
+    config = _load_config(args.config)
 
     # Parse extra binds
     extra_binds = []

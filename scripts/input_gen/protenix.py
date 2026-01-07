@@ -13,7 +13,6 @@ import argparse
 from pathlib import Path
 
 import json
-import yaml
 
 from .base import (
     ModelInputGenerator,
@@ -80,6 +79,25 @@ class ProtenixInputGenerator(ModelInputGenerator):
         pass
 
 
+def _load_config(config_path):
+    """Load config with local overrides."""
+    import yaml
+    from pathlib import Path
+    config_path = Path(config_path)
+    with open(config_path) as f:
+        config = yaml.safe_load(f)
+    local_path = config_path.parent / "config.local.yaml"
+    if local_path.exists():
+        with open(local_path) as f:
+            local_config = yaml.safe_load(f) or {}
+        for key, value in local_config.items():
+            if key in config and isinstance(config[key], dict) and isinstance(value, dict):
+                config[key].update(value)
+            else:
+                config[key] = value
+    return config
+
+
 def main():
     parser = argparse.ArgumentParser(description="Generate Protenix input pickle")
     parser.add_argument("--target-id", required=True, help="Target PDB ID")
@@ -94,8 +112,7 @@ def main():
 
     args = parser.parse_args()
 
-    with open(args.config) as f:
-        config = yaml.safe_load(f)
+    config = _load_config(args.config)
 
     target_lists_dir = Path(config["paths"]["target_lists"])
     target_features = load_target_features(
