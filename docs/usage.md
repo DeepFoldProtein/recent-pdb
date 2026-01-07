@@ -16,17 +16,19 @@ cd psp-benchmark
 uv sync
 ```
 
-## Environment Setup
+## Configuration Setup
 
-Copy and configure the environment file:
+Copy and configure the local configuration file:
 
 ```bash
-cp setup_env.sh.template setup_env.sh
-# Edit setup_env.sh with your paths:
-#   PDB_MMCIF_DIR, AF3_DB_DIR, AF3_MODEL_DIR, etc.
-
-source setup_env.sh
+cp config.local.yaml.example config.local.yaml
+# Edit config.local.yaml with your paths:
+#   paths.pdb_master, models.*.container, models.*.model_dir, etc.
+vim config.local.yaml
 ```
+
+> [!TIP]
+> `config.local.yaml` overrides `config.yaml` settings and is gitignored for machine-specific paths.
 
 ## Quick Test
 
@@ -47,9 +49,6 @@ uv run snakemake -n
 Run the complete pipeline for a single target (e.g., `4HHB`):
 
 ```bash
-# Set environment
-source setup_env.sh
-
 # Run MSA → Input Gen → Inference → Evaluation for AlphaFold3
 uv run snakemake --cores 8 --use-singularity \
     outputs/evaluation/AlphaFold3/4HHB/ost.json
@@ -279,10 +278,13 @@ To download (or update) the entire PDB mmCIF archive and rebuild the metadata re
 ```bash
 # Run full rsync and registry update
 uv run python scripts/sync_pdb.py \
-    --pdb-master ${PDB_MMCIF_DIR} \
+    --pdb-master /path/to/pdb/mmCIF \
     --registry-db data/registry.sqlite
 ```
 
+> [!TIP]
+> If `pdb_master` is set in `config.local.yaml`, you can omit the `--pdb-master` flag.
+>
 > [!NOTE]
 > The default `Snakefile` rule `sync_pdb` uses the `--skip-sync` flag to save time during routine execution. Use the command above for periodic updates.
 

@@ -8,8 +8,8 @@
 # Storage Paths
 # -----------------------------------------------------------------------------
 paths:
-  # Central PDB mirror (set via PDB_MMCIF_DIR in setup_env.sh)
-  pdb_master: "${PDB_MMCIF_DIR}"
+  # [CUSTOMIZE] Path to local PDB mmCIF mirror directory
+  pdb_master: "/path/to/pdb/mmCIF"
 
   # Sequence-based shared cache directory
   msa_cache: "./cache/sequences"
@@ -138,14 +138,14 @@ msa:
 # -----------------------------------------------------------------------------
 models:
   AlphaFold3:
-    # Apptainer/Singularity image
-    container: "${AF3_SIF}"
+    # [CUSTOMIZE] Apptainer/Singularity image path
+    container: "/path/to/containers/alphafold3.sif"
 
-    # Model weights directory
-    model_dir: "${AF3_MODEL_DIR}"
+    # [CUSTOMIZE] Model weights directory
+    model_dir: "/path/to/af3/models"
 
-    # Genetic databases directory
-    databases_dir: "${AF3_DB_DIR}"
+    # [CUSTOMIZE] Genetic databases directory
+    databases_dir: "/path/to/af3/databases"
 
     # Input/output format
     input_format: "json"
@@ -166,8 +166,8 @@ models:
         --run_inference=true
 
   Protenix:
-    # Apptainer/Singularity image
-    container: "${PROTENIX_SIF}"
+    # [CUSTOMIZE] Apptainer/Singularity image path
+    container: "/path/to/containers/protenix.sif"
 
     # Model name (from Protenix releases)
     model_name: "protenix_base_default_v0.5.0"
@@ -191,8 +191,8 @@ models:
         --use_msa {use_msa}
 
   ColabFold:
-    # Apptainer/Singularity image (LocalColabFold)
-    container: "${COLABFOLD_SIF}"
+    # [CUSTOMIZE] Apptainer/Singularity image path
+    container: "/path/to/containers/colabfold.sif"
 
     # ColabFold mode: "alphafold2_multimer" or "alphafold2"
     model_type: "alphafold2_multimer"

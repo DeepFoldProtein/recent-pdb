@@ -17,8 +17,24 @@ import os
 import json
 from pathlib import Path
 
+def deep_merge(base, override):
+    """Recursively merge override dict into base dict."""
+    for key, value in override.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            deep_merge(base[key], value)
+        else:
+            base[key] = value
+    return base
+
 # Load configuration
 configfile: "config.yaml"
+
+# Merge local overrides if exists
+if os.path.exists("config.local.yaml"):
+    import yaml
+    with open("config.local.yaml") as f:
+        local_config = yaml.safe_load(f) or {}
+    deep_merge(config, local_config)
 
 # Resolve paths (relative for portability)
 CACHE_DIR = Path(config["paths"]["msa_cache"])

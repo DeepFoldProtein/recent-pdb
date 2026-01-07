@@ -235,4 +235,6 @@ logs/
 
 # Temporary files
 *.tmp
-setup_env.sh
+
+# Local configuration overrides (machine-specific)
+config.local.yaml
