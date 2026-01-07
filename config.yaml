@@ -33,7 +33,7 @@ paths:
 filters:
   # Path to custom PDB ID list file (if set, overrides automatic filtering)
   # Format: one PDB ID per line (e.g., "8abc"), lines starting with # are ignored
-  custom_targets_file: "targets_test.txt" # e.g., "./my_targets.txt"
+  custom_targets_file: "./my_targets.txt"
 
   # Maximum resolution (Å) for included structures
   resolution_max: 2.5
